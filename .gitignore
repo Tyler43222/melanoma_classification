@@ -1,0 +1,12 @@
+# Ignore everything by default
+*
+*/
+
+# But include these specific files
+!.gitignore
+!app.py
+!train.py
+!predict.py
+!README.md
+!requirements.txt
+!model7.keras
