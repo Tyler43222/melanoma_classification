@@ -4,6 +4,8 @@ import tensorflow as tf
 
 import functools
 
+IMG_SIZE = 100
+
 def analyze_image(uploaded_file):
     model = _load_model()
 
@@ -14,7 +16,7 @@ def analyze_image(uploaded_file):
     if img is None:
         raise ValueError("Could not decode uploaded image")
 
-    img = cv2.resize(img, (100, 100))
+    img = cv2.resize(img, (IMG_SIZE, IMG_SIZE))
     img = img.astype("float32") / 255.0  # Normalize like training
     img = np.expand_dims(img, axis=0)  # Add batch dimension
 
@@ -51,7 +53,8 @@ def guided_gradcam_png(image_bytes, target_class=None):
     if decoded is None:
         raise ValueError("Could not decode uploaded image")
 
-    img_resized = cv2.resize(decoded, (100, 100))
+    # Model input (fixed size)
+    img_resized = cv2.resize(decoded, (IMG_SIZE, IMG_SIZE))
     img_float = img_resized.astype("float32") / 255.0
     input_tensor = tf.convert_to_tensor(img_float[None, ...])
 
@@ -69,7 +72,7 @@ def guided_gradcam_png(image_bytes, target_class=None):
         raise RuntimeError("Could not find a Conv2D layer for Grad-CAM")
 
     # Grad-CAM heatmap - build grad_model without accessing model.inputs
-    grad_input = tf.keras.Input(shape=(100, 100, 3))
+    grad_input = tf.keras.Input(shape=(IMG_SIZE, IMG_SIZE, 3))
     x = grad_input
     conv_output = None
     for layer in model.layers:
@@ -85,48 +88,24 @@ def guided_gradcam_png(image_bytes, target_class=None):
     grads = tape.gradient(score, conv_out)
     weights = tf.reduce_mean(grads, axis=(1, 2))
     cam = tf.reduce_sum(conv_out * weights[:, None, None, :], axis=-1)
-    cam = tf.nn.relu(cam)[0]
-    cam = cam / (tf.reduce_max(cam) + 1e-8)
-    heatmap = cam.numpy()
-    heatmap = cv2.resize(heatmap, (100, 100))
-    heatmap = heatmap[..., None]
+    cam = tf.nn.relu(cam)[0].numpy()
 
-    # Guided backprop (simple, by swapping relu gradients)
-    @tf.custom_gradient
-    def guided_relu(x):
-        y = tf.nn.relu(x)
+    # Normalize with percentile clipping for better contrast.
+    cam = np.maximum(cam, 0.0)
+    cam = cv2.resize(cam, (IMG_SIZE, IMG_SIZE), interpolation=cv2.INTER_CUBIC)
+    p = float(np.percentile(cam, 99.0))
+    if p <= 1e-12:
+        cam_norm = np.zeros_like(cam, dtype=np.float32)
+    else:
+        cam_norm = np.clip(cam / p, 0.0, 1.0).astype(np.float32)
 
-        def grad(dy):
-            gate_f = tf.cast(x > 0, dy.dtype)
-            gate_r = tf.cast(dy > 0, dy.dtype)
-            return dy * gate_f * gate_r
+    # Create a colored heatmap and overlay on the image.
+    heatmap_u8 = (cam_norm * 255).astype(np.uint8)
+    heatmap_color = cv2.applyColorMap(heatmap_u8, cv2.COLORMAP_JET)
+    overlay = cv2.addWeighted(img_resized.astype(np.uint8), 0.55, heatmap_color, 0.45, 0)
 
-        return y, grad
-
-    def _clone_layer(layer):
-        cfg = layer.get_config()
-        if "activation" in cfg and cfg["activation"] == "relu":
-            cfg["activation"] = guided_relu
-        if isinstance(layer, tf.keras.layers.Activation) and cfg.get("activation") == "relu":
-            cfg["activation"] = guided_relu
-        return layer.__class__.from_config(cfg)
-
-    guided_model = tf.keras.models.clone_model(model, clone_function=_clone_layer)
-    guided_model.set_weights(model.get_weights())
-
-    with tf.GradientTape() as tape:
-        tape.watch(input_tensor)
-        guided_preds = guided_model(input_tensor, training=False)[:, class_index]
-    guided_grads = tape.gradient(guided_preds, input_tensor)[0].numpy()  # (H,W,3)
-    guided_grads = np.maximum(guided_grads, 0.0)
-
-    guided_cam = guided_grads * heatmap
-    guided_cam = guided_cam - guided_cam.min()
-    guided_cam = guided_cam / (guided_cam.max() + 1e-8)
-    guided_cam_u8 = (guided_cam * 255).astype(np.uint8)
-
-    ok, buf = cv2.imencode(".png", guided_cam_u8)
+    ok, buf = cv2.imencode(".png", overlay)
     if not ok:
-        raise RuntimeError("Could not encode Guided Grad-CAM image")
+        raise RuntimeError("Could not encode Grad-CAM overlay image")
     return buf.tobytes()
    
