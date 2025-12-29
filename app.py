@@ -13,7 +13,12 @@ if st.button("Analyze"):
             image_bytes = uploaded_file.getvalue()
             result = analyze_image(io.BytesIO(image_bytes))
             st.write(result)
-            st.image(guided_gradcam_png(image_bytes), caption="Guided Grad-CAM")
+
+            # Generate the Guided Grad-CAM image
+            gradcam_image = guided_gradcam_png(image_bytes)
+
+            # Display the image with a larger width
+            st.image(gradcam_image, caption="Guided Grad-CAM", use_column_width=True)
         except Exception as exc:
             st.error(str(exc))
     else:
