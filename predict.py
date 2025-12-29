@@ -4,6 +4,8 @@ import tensorflow as tf
 
 import functools
 
+IMG_SIZE = 100
+
 def analyze_image(uploaded_file):
     model = _load_model()
 
@@ -14,8 +16,7 @@ def analyze_image(uploaded_file):
     if img is None:
         raise ValueError("Could not decode uploaded image")
 
-    target_w, target_h = _model_image_size(model)
-    img = cv2.resize(img, (target_w, target_h))
+    img = cv2.resize(img, (IMG_SIZE, IMG_SIZE))
     img = img.astype("float32") / 255.0  # Normalize like training
     img = np.expand_dims(img, axis=0)  # Add batch dimension
 
@@ -29,15 +30,7 @@ def analyze_image(uploaded_file):
 def _load_model():
     try:
         model = tf.keras.models.load_model("model7.keras")
-
-        # Some environments load Sequential models in an un-built state.
-        # Calling once defines model.inputs/model.outputs so Grad-CAM can use them.
-        try:
-            target_w, target_h = _model_image_size(model)
-            _ = model(tf.zeros((1, target_h, target_w, 3), dtype=tf.float32), training=False)
-        except Exception:
-            pass
-
+        _ensure_model_called(model)
         return model
     except Exception as exc:
         message = str(exc)
@@ -50,15 +43,21 @@ def _load_model():
         raise
 
 
-def _model_image_size(model):
-    """Return (width, height) expected by the model, falling back to (100,100)."""
+def _ensure_model_called(model):
+    """Force-build/call a loaded Sequential model so model.inputs/model.output exist."""
     try:
-        _, h, w, _ = model.input_shape
-        if h is None or w is None:
-            return 100, 100
-        return int(w), int(h)
+        _ = model.inputs
+        _ = model.outputs
+        return
     except Exception:
-        return 100, 100
+        pass
+
+    try:
+        model.build((None, IMG_SIZE, IMG_SIZE, 3))
+    except Exception:
+        pass
+
+    _ = model(tf.zeros((1, IMG_SIZE, IMG_SIZE, 3), dtype=tf.float32), training=False)
 
 
 def guided_gradcam_png(image_bytes, target_class=None):
@@ -68,13 +67,13 @@ def guided_gradcam_png(image_bytes, target_class=None):
     - target_class: optional int class index; defaults to predicted class
     """
     model = _load_model()
+    _ensure_model_called(model)
 
     decoded = cv2.imdecode(np.frombuffer(image_bytes, dtype=np.uint8), cv2.IMREAD_COLOR)
     if decoded is None:
         raise ValueError("Could not decode uploaded image")
 
-    target_w, target_h = _model_image_size(model)
-    img_resized = cv2.resize(decoded, (target_w, target_h))
+    img_resized = cv2.resize(decoded, (IMG_SIZE, IMG_SIZE))
     img_float = img_resized.astype("float32") / 255.0
     input_tensor = tf.convert_to_tensor(img_float[None, ...])
 
@@ -92,7 +91,7 @@ def guided_gradcam_png(image_bytes, target_class=None):
         raise RuntimeError("Could not find a Conv2D layer for Grad-CAM")
 
     # Grad-CAM heatmap
-    grad_model = tf.keras.Model([model.inputs], [model.get_layer(last_conv).output, model.output])
+    grad_model = tf.keras.Model(model.inputs, [model.get_layer(last_conv).output, model.output])
     with tf.GradientTape() as tape:
         conv_out, predictions = grad_model(input_tensor, training=False)
         score = predictions[:, class_index]
@@ -102,7 +101,7 @@ def guided_gradcam_png(image_bytes, target_class=None):
     cam = tf.nn.relu(cam)[0]
     cam = cam / (tf.reduce_max(cam) + 1e-8)
     heatmap = cam.numpy()
-    heatmap = cv2.resize(heatmap, (target_w, target_h))
+    heatmap = cv2.resize(heatmap, (IMG_SIZE, IMG_SIZE))
     heatmap = heatmap[..., None]
 
     # Guided backprop (simple, by swapping relu gradients)
