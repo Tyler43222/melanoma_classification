@@ -14,7 +14,8 @@ def analyze_image(uploaded_file):
     if img is None:
         raise ValueError("Could not decode uploaded image")
 
-    img = cv2.resize(img, (100, 100))
+    target_w, target_h = _model_image_size(model)
+    img = cv2.resize(img, (target_w, target_h))
     img = img.astype("float32") / 255.0  # Normalize like training
     img = np.expand_dims(img, axis=0)  # Add batch dimension
 
@@ -27,7 +28,17 @@ def analyze_image(uploaded_file):
 @functools.lru_cache(maxsize=1)
 def _load_model():
     try:
-        return tf.keras.models.load_model("model7.keras")
+        model = tf.keras.models.load_model("model7.keras")
+
+        # Some environments load Sequential models in an un-built state.
+        # Calling once defines model.inputs/model.outputs so Grad-CAM can use them.
+        try:
+            target_w, target_h = _model_image_size(model)
+            _ = model(tf.zeros((1, target_h, target_w, 3), dtype=tf.float32), training=False)
+        except Exception:
+            pass
+
+        return model
     except Exception as exc:
         message = str(exc)
         if "batch_input_shape" in message and "Conv2D" in message:
@@ -37,6 +48,17 @@ def _load_model():
                 "Re-train and re-save the model using the current environment (train.py), then try again."
             ) from exc
         raise
+
+
+def _model_image_size(model):
+    """Return (width, height) expected by the model, falling back to (100,100)."""
+    try:
+        _, h, w, _ = model.input_shape
+        if h is None or w is None:
+            return 100, 100
+        return int(w), int(h)
+    except Exception:
+        return 100, 100
 
 
 def guided_gradcam_png(image_bytes, target_class=None):
@@ -51,7 +73,8 @@ def guided_gradcam_png(image_bytes, target_class=None):
     if decoded is None:
         raise ValueError("Could not decode uploaded image")
 
-    img_resized = cv2.resize(decoded, (100, 100))
+    target_w, target_h = _model_image_size(model)
+    img_resized = cv2.resize(decoded, (target_w, target_h))
     img_float = img_resized.astype("float32") / 255.0
     input_tensor = tf.convert_to_tensor(img_float[None, ...])
 
@@ -79,7 +102,7 @@ def guided_gradcam_png(image_bytes, target_class=None):
     cam = tf.nn.relu(cam)[0]
     cam = cam / (tf.reduce_max(cam) + 1e-8)
     heatmap = cam.numpy()
-    heatmap = cv2.resize(heatmap, (100, 100))
+    heatmap = cv2.resize(heatmap, (target_w, target_h))
     heatmap = heatmap[..., None]
 
     # Guided backprop (simple, by swapping relu gradients)
