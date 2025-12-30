@@ -11,3 +11,4 @@
 !requirements.txt
 !model25.keras
 !/graphs
+!/graphs/**
