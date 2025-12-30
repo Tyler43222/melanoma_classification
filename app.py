@@ -18,7 +18,7 @@ if st.button("Analyze"):
             gradcam_image = guided_gradcam_png(image_bytes)
 
             # Display the image with a larger width
-            st.image(gradcam_image, caption="Guided Grad-CAM", use_column_width=True)
+            st.image(gradcam_image, caption="Guided Grad-CAM", width=True)
         except Exception as exc:
             st.error(str(exc))
     else:

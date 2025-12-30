@@ -5,10 +5,10 @@ import sys
 import tensorflow as tf
 import matplotlib.pyplot as plt
 from sklearn.metrics import ConfusionMatrixDisplay, classification_report, confusion_matrix
+from sklearn.model_selection import train_test_split
 
 EPOCHS = 30
-IMG_WIDTH = 100
-IMG_HEIGHT = 100
+IMG_SIZE = 100
 
 def main():
 
@@ -32,11 +32,16 @@ def main():
     x_train = x_train.astype("float32") / 255.0
     x_test = x_test.astype("float32") / 255.0
 
-    # Shuffle once so validation_split isn't just the last 20%
-    rng = np.random.default_rng(42)
-    indices = rng.permutation(len(x_train))
-    x_train = x_train[indices]
-    y_train = y_train[indices]
+    # Create a stratified validation split so val metrics are stable
+    y_labels = np.argmax(y_train, axis=1)
+    x_train, x_val, y_train, y_val = train_test_split(
+        x_train,
+        y_train,
+        test_size=0.2,
+        random_state=42,
+        shuffle=True,
+        stratify=y_labels,
+    )
 
     # Get a compiled neural network
     model = get_model(len(class_names))
@@ -44,7 +49,7 @@ def main():
     # Fit model on training data
     early_stop = tf.keras.callbacks.EarlyStopping(
         monitor="val_accuracy",
-        patience=3,
+        patience=5,
         min_delta=0.01,
         restore_best_weights=True,
     )
@@ -52,7 +57,8 @@ def main():
         x_train,
         y_train,
         epochs=EPOCHS,
-        validation_split=0.2,
+        batch_size=64,
+        validation_data=(x_val, y_val),
         callbacks=[early_stop],
         verbose=2,
     )
@@ -133,7 +139,7 @@ def load_data(data_dir, class_names=None):
             img = cv2.imread(file_path)
             if img is None:
                 continue
-            res = cv2.resize(img, (IMG_WIDTH, IMG_HEIGHT))
+            res = cv2.resize(img, (IMG_SIZE, IMG_SIZE))
             images.append(res)
             labels.append(class_to_index[class_name])
 
@@ -151,22 +157,22 @@ def get_model(num_categories):
     model = tf.keras.models.Sequential([
 
         # Define input explicitly
-        tf.keras.layers.Input(shape=(IMG_WIDTH, IMG_HEIGHT, 3)),
+        tf.keras.layers.Input(shape=(IMG_SIZE, IMG_SIZE, 3)),
 
         # Convolutional layer
-        tf.keras.layers.Conv2D(16, (3, 3), activation="relu"),
+        tf.keras.layers.Conv2D(16, (3, 3), padding="same", activation="relu"),
         tf.keras.layers.BatchNormalization(),
 
         # Max-pooling layer, using 2x2 pool size
         tf.keras.layers.MaxPooling2D(pool_size=(2, 2)),
 
         # Second Convolutional layer
-        tf.keras.layers.Conv2D(32, (3, 3), activation="relu"),
+        tf.keras.layers.Conv2D(32, (3, 3), padding="same", activation="relu"),
         tf.keras.layers.BatchNormalization(),
         tf.keras.layers.MaxPooling2D(pool_size=(2, 2)),
 
         # Third convolutional layer
-        tf.keras.layers.Conv2D(64, (3, 3), activation="relu"),
+        tf.keras.layers.Conv2D(64, (3, 3), padding="same", activation="relu"),
         tf.keras.layers.BatchNormalization(),
         tf.keras.layers.MaxPooling2D(pool_size=(2, 2)),
 
@@ -174,8 +180,8 @@ def get_model(num_categories):
         tf.keras.layers.GlobalAveragePooling2D(),
 
         # Add a hidden layer with dropout
-        tf.keras.layers.Dense(64, activation="relu"),
-        tf.keras.layers.Dropout(0.5),
+        tf.keras.layers.Dense(256, activation="relu"),
+        tf.keras.layers.Dropout(0.4),
 
         # Add an output layer
         tf.keras.layers.Dense(num_categories, activation="softmax")

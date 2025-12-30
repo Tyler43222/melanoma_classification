@@ -6,6 +6,10 @@ import functools
 
 IMG_SIZE = 100
 
+# Use a higher-resolution conv feature map for Grad-CAM.
+# 1 = last conv (lowest resolution), 2 = penultimate conv (usually sharper).
+_GRADCAM_CONV_FROM_END = 2
+
 def analyze_image(uploaded_file):
     model = _load_model()
 
@@ -29,7 +33,7 @@ def analyze_image(uploaded_file):
 @functools.lru_cache(maxsize=1)
 def _load_model():
     try:
-        return tf.keras.models.load_model("model7.keras")
+        return tf.keras.models.load_model("model25.keras")
     except Exception as exc:
         message = str(exc)
         if "batch_input_shape" in message and "Conv2D" in message:
@@ -62,14 +66,18 @@ def guided_gradcam_png(image_bytes, target_class=None):
     preds = model(input_tensor, training=False)[0]
     class_index = int(tf.argmax(preds).numpy()) if target_class is None else int(target_class)
 
-    # last conv layer
-    last_conv = None
-    for layer in reversed(model.layers):
-        if isinstance(layer, tf.keras.layers.Conv2D):
-            last_conv = layer.name
-            break
-    if last_conv is None:
+    # Choose an earlier Conv2D layer for a higher-resolution Grad-CAM.
+    conv_layers = [layer for layer in model.layers if isinstance(layer, tf.keras.layers.Conv2D)]
+    if not conv_layers:
         raise RuntimeError("Could not find a Conv2D layer for Grad-CAM")
+
+    idx_from_end = int(_GRADCAM_CONV_FROM_END)
+    if idx_from_end < 1:
+        idx_from_end = 1
+    if idx_from_end > len(conv_layers):
+        idx_from_end = len(conv_layers)
+
+    target_conv_name = conv_layers[-idx_from_end].name
 
     # Grad-CAM heatmap - build grad_model without accessing model.inputs
     grad_input = tf.keras.Input(shape=(IMG_SIZE, IMG_SIZE, 3))
@@ -79,8 +87,10 @@ def guided_gradcam_png(image_bytes, target_class=None):
         if hasattr(layer, '_batch_input_shape') or isinstance(layer, tf.keras.layers.InputLayer):
             continue  # skip input layer
         x = layer(x)
-        if layer.name == last_conv:
+        if layer.name == target_conv_name:
             conv_output = x
+    if conv_output is None:
+        raise RuntimeError(f"Could not capture activations for conv layer '{target_conv_name}'")
     grad_model = tf.keras.Model(grad_input, [conv_output, x])
     with tf.GradientTape() as tape:
         conv_out, predictions = grad_model(input_tensor, training=False)
