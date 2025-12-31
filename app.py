@@ -21,11 +21,10 @@ if st.button("Analyze"):
             st.markdown(f"RESULTS: Benign: {result[0]}%, Malignant: {result[1]}%", unsafe_allow_html=True)
             st.write("")
 
-            # Generate and display the Guided Grad-CAM image
-            gradcam_image = guided_gradcam_png(image_bytes)["overlay_png"]
-            st.image(gradcam_image, caption="Guided Grad-CAM", use_container_width=True)
-            gradcam_image2 = guided_gradcam_png(image_bytes)["guided_edges_png"]
-            st.image(gradcam_image2, caption="Guided Grad-CAM", use_container_width=True)
+            # Generate and display the Guided Grad-CAM images
+            gradcam_results = guided_gradcam_png(image_bytes)
+            st.image(gradcam_results["overlay_png"], caption="Grad-CAM Heatmap Overlay", use_container_width=True)
+            st.image(gradcam_results["guided_edges_png"], caption="Guided Edges", use_container_width=True)
 
         except Exception as exc:
             st.error(str(exc))

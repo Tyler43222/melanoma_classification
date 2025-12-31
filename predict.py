@@ -46,6 +46,7 @@ def _build_guided_model(model):
     """Clone model but replace ReLU activations with guided ReLU."""
     # Clone the model
     cloned_model = tf.keras.models.clone_model(model)
+    cloned_model.build((None, IMG_SIZE, IMG_SIZE, 3))
     cloned_model.set_weights(model.get_weights())
     
     # Replace ReLU activations with guided ReLU
