@@ -3,15 +3,14 @@ import numpy as np
 import os
 import sys
 import tensorflow as tf
-import matplotlib.pyplot as plt
-from sklearn.metrics import ConfusionMatrixDisplay, classification_report, confusion_matrix
 from sklearn.model_selection import train_test_split
+from utils import generate_graphs
 
 EPOCHS = 30
 IMG_SIZE = 100
 
-def main():
 
+def main():
     # Check command-line arguments
     if len(sys.argv) not in [2, 3]:
         sys.exit("Usage: python traffic.py data_directory [model.h5]")
@@ -19,16 +18,12 @@ def main():
     data_root = sys.argv[1]
     train_dir = os.path.join(data_root, "train")
     test_dir = os.path.join(data_root, "test")
-    if not (os.path.isdir(train_dir) and os.path.isdir(test_dir)):
-        sys.exit(
-            "Expected data_directory to contain train/ and test/ folders."
-        )
 
-    # Load training/testing data from class-named folders (e.g., Benign/Malignant)
+    # Load training/testing data from class-named folders
     x_train, y_train, class_names = load_data(train_dir)
     x_test, y_test, _ = load_data(test_dir, class_names=class_names)
 
-    # Normalize pixel values to [0, 1] to match prediction-time preprocessing
+    # Normalize pixel values to [0, 1]
     x_train = x_train.astype("float32") / 255.0
     x_test = x_test.astype("float32") / 255.0
 
@@ -46,13 +41,15 @@ def main():
     # Get a compiled neural network
     model = get_model(len(class_names))
 
-    # Fit model on training data
+    # Stop training early if val_accuracy plateaus
     early_stop = tf.keras.callbacks.EarlyStopping(
         monitor="val_accuracy",
         patience=5,
         min_delta=0.01,
         restore_best_weights=True,
     )
+
+    # Fit model on training data
     history = model.fit(
         x_train,
         y_train,
@@ -63,61 +60,25 @@ def main():
         verbose=2,
     )
 
-    # Evaluate neural network performance
     model.evaluate(x_test,  y_test, verbose=2)
 
-    # Plot accuracy/loss across epochs
-    epochs = range(1, len(history.history.get("loss", [])) + 1)
-    plt.figure(figsize=(10, 4))
-    plt.subplot(1, 2, 1)
-    plt.plot(epochs, history.history.get("accuracy", []), label="train")
-    plt.title("Accuracy")
-    plt.xlabel("Epoch")
-    plt.ylabel("Accuracy")
-    plt.legend()
-
-    plt.subplot(1, 2, 2)
-    plt.plot(epochs, history.history.get("loss", []), label="train")
-    plt.title("Loss")
-    plt.xlabel("Epoch")
-    plt.ylabel("Loss")
-    plt.legend()
-
-    plt.tight_layout()
-    plt.savefig("training_curves.png", dpi=150)
-    plt.close()
-
-    # Confusion matrix on test set
-    y_true = np.argmax(y_test, axis=1)
-    y_pred = np.argmax(model.predict(x_test, verbose=0), axis=1)
-    cm = confusion_matrix(y_true, y_pred, labels=list(range(len(class_names))))
-    print("\nClassification report (test set):")
-    print(classification_report(y_true, y_pred, target_names=class_names, digits=3))
-    ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=class_names).plot(cmap="Blues", colorbar=False)
-    plt.title("Confusion Matrix (Test Set)")
-    plt.tight_layout()
-    plt.savefig("confusion_matrix.png", dpi=150)
-    plt.close()
+    # Create accuracy/loss charts and confusion matrix 
+    generate_graphs(history, class_names, y_test, x_test, model)
 
     # Save model to file
-    if len(sys.argv) == 3:
-        filename = sys.argv[2]
-        model.save(filename)
-        print(f"Model saved to {filename}.")
+    filename = sys.argv[2]
+    model.save(filename)
+    print(f"Model saved to {filename}.")
 
 
 def load_data(data_dir, class_names=None):
     """
     Load image data from directory `data_dir`.
 
-    Assume `data_dir` has one directory named after each category (e.g.,
-    Benign, Malignant). Inside each category directory will be some number
-    of image files.
-
     Return tuple `(images, labels, class_names)`. `images` is an array of
-    resized images (IMG_WIDTH x IMG_HEIGHT x 3). `labels` is a one-hot array
-    of integer class labels. `class_names` is the sorted list of class folder
-    names used to map labels consistently.
+    resized images. `labels` is a one-hot array of integer class labels. 
+    `class_names` is the sorted list of class folder names used to map 
+    labels consistently.
     """
     if class_names is None:
         class_names = sorted(
@@ -149,24 +110,19 @@ def load_data(data_dir, class_names=None):
 
 def get_model(num_categories):
     """
-    Returns a compiled convolutional neural network model. Assume that the
-    `input_shape` of the first layer is `(IMG_WIDTH, IMG_HEIGHT, 3)`.
-    The output layer should have `num_categories` units, one for each category.
+    Returns a compiled convolutional neural network model.
     """
-    # Create a convolutional neural network
     model = tf.keras.models.Sequential([
 
-        # Define input explicitly
+        # Define input
         tf.keras.layers.Input(shape=(IMG_SIZE, IMG_SIZE, 3)),
 
-        # Convolutional layer
+        # First convolutional layer
         tf.keras.layers.Conv2D(16, (3, 3), padding="same", activation="relu"),
         tf.keras.layers.BatchNormalization(),
-
-        # Max-pooling layer, using 2x2 pool size
         tf.keras.layers.MaxPooling2D(pool_size=(2, 2)),
 
-        # Second Convolutional layer
+        # Second convolutional layer
         tf.keras.layers.Conv2D(32, (3, 3), padding="same", activation="relu"),
         tf.keras.layers.BatchNormalization(),
         tf.keras.layers.MaxPooling2D(pool_size=(2, 2)),
@@ -176,18 +132,17 @@ def get_model(num_categories):
         tf.keras.layers.BatchNormalization(),
         tf.keras.layers.MaxPooling2D(pool_size=(2, 2)),
 
-        # Global pooling instead of flatten
         tf.keras.layers.GlobalAveragePooling2D(),
 
-        # Add a hidden layer with dropout
+        # Hidden layer with dropout
         tf.keras.layers.Dense(256, activation="relu"),
         tf.keras.layers.Dropout(0.4),
 
-        # Add an output layer
+        # Output layer
         tf.keras.layers.Dense(num_categories, activation="softmax")
     ])
 
-    # Train neural network
+    # Train CNN
     model.compile(
         optimizer="adam",
         loss="categorical_crossentropy",

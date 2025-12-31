@@ -4,15 +4,22 @@ import io
 from predict import analyze_image, guided_gradcam_png
 
 st.title("Skin Scan")
-
+st.write("")
+st.write("For accurate results make sure skinspot is: (1) large in frame, (2) in-focus, (3) brightly lit. Best if taken from a high-resolution digital camera")
+st.write("")
 uploaded_file = st.file_uploader("Upload a file", type=["png", "jpg", "jpeg"])
+st.write("")
 
 if st.button("Analyze"):
     if uploaded_file:
         try:
             image_bytes = uploaded_file.getvalue()
             result = analyze_image(io.BytesIO(image_bytes))
-            st.write(result)
+            st.write("")
+            st.write("These results are not a diagnosis")
+            st.write("")
+            st.markdown(f"RESULTS:\n<pre>      Benign: {result[0]}\n      Malignant: {result[1]}</pre>", unsafe_allow_html=True)
+            st.write("")
 
             # Generate the Guided Grad-CAM image
             gradcam_image = guided_gradcam_png(image_bytes)

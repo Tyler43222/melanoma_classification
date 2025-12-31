@@ -2,10 +2,11 @@
 *
 */
 
-# But include these specific files
+# Include these specific files
 !.gitignore
 !app.py
 !train.py
+!utils.py
 !predict.py
 !README.md
 !requirements.txt

@@ -12,19 +12,20 @@ Kaggle dataset with 13,879 curated images of skinspots split into a training and
     - Malignant - 1000 images
 
 ### Structure
- - ```train.py``` - trains a CNN on the dataset and generates performance graphs
+ - ```train.py``` - trains a CNN on the dataset and saves model. 30 epochs maximum, stops early if performance plateaus. 
  - ```predict.py``` - contains functions to classify user uploaded images and generate guided gradcam
  - ```app.py``` - calls functions from predict.py to display results on Streamlit frontend
+ - ```utils.py``` - function for generating accuracy/loss graph and confusion matrix
 
 ## Model Architecture 
 After extensive experimentation, I found that the following model architecture led to the highest accuracy and lowest loss while minimizing overfitting:
 
-![alt text](graphs/architecture.png)
+<img src="graphs/architecture.png" alt="architecture" width="50%">
 
 ### Performance
 ![alt text](graphs/training_curves.png)
 
-![alt text](graphs/confusion_matrix.png)
+<img src="graphs/confusion_matrix.png" alt="confusion matrix" width="70%">
 
 ## Limitations
 - During training, all images were resized to 100x100 pixels to ensure fast training cycles, however this came at the cost of accuracy. When downsizing, fine details critical in distinguishing a benign spot from melanoma can be lost.  

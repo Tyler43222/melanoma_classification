@@ -1,17 +1,16 @@
 import cv2
 import numpy as np
 import tensorflow as tf
-
 import functools
 
 IMG_SIZE = 100
 
-# Use a higher-resolution conv feature map for Grad-CAM.
-# 1 = last conv (lowest resolution), 2 = penultimate conv (usually sharper).
-_GRADCAM_CONV_FROM_END = 2
+# Use 2nd to last conv layer for Grad-CAM.
+CONV_LAYER = 2
+
 
 def analyze_image(uploaded_file):
-    model = _load_model()
+    model = load_model()
 
     # Read uploaded file into numpy array
     file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
@@ -21,28 +20,17 @@ def analyze_image(uploaded_file):
         raise ValueError("Could not decode uploaded image")
 
     img = cv2.resize(img, (IMG_SIZE, IMG_SIZE))
-    img = img.astype("float32") / 255.0  # Normalize like training
-    img = np.expand_dims(img, axis=0)  # Add batch dimension
+    img = img.astype("float32") / 255.0 
+    img = np.expand_dims(img, axis=0)
 
-    # Predict
     pred = model.predict(img)
     probs = pred[0]  # [Benign, Malignant]
-    return f"RESULTS:\nBenign: {int(probs[0] * 100)}%\nMalignant: {int(probs[1] * 100)}%"
+    return (int(probs[0] * 100), int(probs[1] * 100))
 
 
 @functools.lru_cache(maxsize=1)
-def _load_model():
-    try:
-        return tf.keras.models.load_model("model25.keras")
-    except Exception as exc:
-        message = str(exc)
-        if "batch_input_shape" in message and "Conv2D" in message:
-            raise RuntimeError(
-                "Your saved model file (model7.keras) was created with an older Keras format and "
-                "is not compatible with your current TensorFlow/Keras install. "
-                "Re-train and re-save the model using the current environment (train.py), then try again."
-            ) from exc
-        raise
+def load_model():
+    return tf.keras.models.load_model("model25.keras")
 
 
 def guided_gradcam_png(image_bytes, target_class=None):
@@ -51,7 +39,7 @@ def guided_gradcam_png(image_bytes, target_class=None):
     - image_bytes: raw bytes of a PNG/JPG
     - target_class: optional int class index; defaults to predicted class
     """
-    model = _load_model()
+    model = load_model()
 
     decoded = cv2.imdecode(np.frombuffer(image_bytes, dtype=np.uint8), cv2.IMREAD_COLOR)
     if decoded is None:
@@ -68,10 +56,8 @@ def guided_gradcam_png(image_bytes, target_class=None):
 
     # Choose an earlier Conv2D layer for a higher-resolution Grad-CAM.
     conv_layers = [layer for layer in model.layers if isinstance(layer, tf.keras.layers.Conv2D)]
-    if not conv_layers:
-        raise RuntimeError("Could not find a Conv2D layer for Grad-CAM")
 
-    idx_from_end = int(_GRADCAM_CONV_FROM_END)
+    idx_from_end = int(CONV_LAYER)
     if idx_from_end < 1:
         idx_from_end = 1
     if idx_from_end > len(conv_layers):
@@ -79,7 +65,7 @@ def guided_gradcam_png(image_bytes, target_class=None):
 
     target_conv_name = conv_layers[-idx_from_end].name
 
-    # Grad-CAM heatmap - build grad_model without accessing model.inputs
+    # Grad-CAM heatmap
     grad_input = tf.keras.Input(shape=(IMG_SIZE, IMG_SIZE, 3))
     x = grad_input
     conv_output = None
@@ -89,8 +75,7 @@ def guided_gradcam_png(image_bytes, target_class=None):
         x = layer(x)
         if layer.name == target_conv_name:
             conv_output = x
-    if conv_output is None:
-        raise RuntimeError(f"Could not capture activations for conv layer '{target_conv_name}'")
+
     grad_model = tf.keras.Model(grad_input, [conv_output, x])
     with tf.GradientTape() as tape:
         conv_out, predictions = grad_model(input_tensor, training=False)
