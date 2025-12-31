@@ -41,6 +41,8 @@ def load_model():
 @functools.lru_cache(maxsize=1)
 def load_guided_model():
     m = load_model()
+    model = load_model()
+    _ = model(tf.zeros((1, IMG_SIZE, IMG_SIZE, 3)), training=False)
     gm = _build_guided_model(m)
     dummy = tf.zeros((1, IMG_SIZE, IMG_SIZE, 3))
     gm(dummy, training=False)   # force-call
@@ -79,6 +81,7 @@ def guided_gradcam_png(image_bytes, target_class=None):
     - target_class: optional int class index; defaults to predicted class
     """
     model = load_model()
+    _ = model(tf.zeros((1, IMG_SIZE, IMG_SIZE, 3)), training=False)
 
     decoded = cv2.imdecode(np.frombuffer(image_bytes, dtype=np.uint8), cv2.IMREAD_COLOR)
     if decoded is None:
