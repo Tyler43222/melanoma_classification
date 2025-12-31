@@ -22,7 +22,7 @@ After extensive experimentation, I found that the following model architecture l
 
 <img src="graphs/architecture.png" alt="architecture" width="50%">
 
-### Performance
+## Performance
 ![alt text](graphs/training_curves.png)
 
 <img src="graphs/confusion_matrix.png" alt="confusion matrix" width="70%">
