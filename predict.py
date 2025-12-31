@@ -40,13 +40,10 @@ def load_model():
 
 @functools.lru_cache(maxsize=1)
 def load_guided_model():
-    m = load_model()
-    model = load_model()
-    _ = model(tf.zeros((1, IMG_SIZE, IMG_SIZE, 3)), training=False)
-    gm = _build_guided_model(m)
-    dummy = tf.zeros((1, IMG_SIZE, IMG_SIZE, 3))
-    gm(dummy, training=False)   # force-call
-    return gm
+    base_model = load_model()
+    guided = _build_guided_model(base_model)
+    _ = guided(tf.zeros((1, IMG_SIZE, IMG_SIZE, 3)), training=False)
+    return guided
 
 
 @tf.custom_gradient
@@ -59,18 +56,22 @@ def guided_relu(x):
 
 def _build_guided_model(model, input_tensor):
     """Clone model but replace ReLU activations with guided ReLU."""
-    # Clone the model
-    cloned_model = tf.keras.models.clone_model(model)
-    # Call the model with actual input to build it properly
-    _ = cloned_model(input_tensor, training=False)
-    cloned_model.set_weights(model.get_weights())
-    
-    # Replace ReLU activations with guided ReLU
-    for layer in cloned_model.layers:
-        if hasattr(layer, 'activation') and layer.activation == tf.keras.activations.relu:
+    # Clone architecture
+    cloned = tf.keras.models.clone_model(model)
+
+    # Build clone by running dummy inference
+    dummy = tf.zeros((1, IMG_SIZE, IMG_SIZE, 3))
+    cloned(dummy, training=False)
+
+    # Copy weights
+    cloned.set_weights(model.get_weights())
+
+    # Replace activations
+    for layer in cloned.layers:
+        if hasattr(layer, "activation") and layer.activation == tf.keras.activations.relu:
             layer.activation = guided_relu
-    
-    return cloned_model
+
+    return cloned
 
 
 def guided_gradcam_png(image_bytes, target_class=None):
@@ -120,7 +121,7 @@ def guided_gradcam_png(image_bytes, target_class=None):
     cam = cam / (cam.max() + 1e-8)
 
     # --- Guided Backpropagation ---
-    guided_model = _build_guided_model(model, input_tensor)
+    guided_model = load_guided_model()
     with tf.GradientTape() as tape:
         tape.watch(input_tensor)
         guided_preds = guided_model(input_tensor, training=False)
