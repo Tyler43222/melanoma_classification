@@ -54,7 +54,7 @@ def guided_relu(x):
     return tf.nn.relu(x), grad
 
 
-def _build_guided_model(model, input_tensor):
+def _build_guided_model(model):
     """Clone model but replace ReLU activations with guided ReLU."""
     # Clone architecture
     cloned = tf.keras.models.clone_model(model)
@@ -103,8 +103,20 @@ def guided_gradcam_png(image_bytes, target_class=None):
     target_conv_name = conv_layers[-idx_from_end].name
 
     # --- Grad-CAM ---
-    target_layer = model.get_layer(target_conv_name)
-    grad_model = tf.keras.Model(input=model.input, outputs=[target_layer.output, model.output])
+    # Build a functional graph that guarantees the chosen conv activation feeds the final prediction.
+    # This avoids Keras 3 / Sequential edge-cases where `layer.output` / gradients can be disconnected.
+    inputs = tf.keras.Input(shape=(IMG_SIZE, IMG_SIZE, 3))
+    x = inputs
+    conv_out_tensor = None
+    for layer in model.layers:
+        if isinstance(layer, tf.keras.layers.InputLayer):
+            continue
+        x = layer(x)
+        if layer.name == target_conv_name:
+            conv_out_tensor = x
+    if conv_out_tensor is None:
+        raise ValueError(f"Could not find conv layer '{target_conv_name}' in model")
+    grad_model = tf.keras.Model(inputs=inputs, outputs=[conv_out_tensor, x])
 
     with tf.GradientTape() as tape:
         tape.watch(input_tensor)
@@ -158,4 +170,5 @@ def guided_gradcam_png(image_bytes, target_class=None):
         "overlay_png": buf.tobytes(),
         "guided_edges_png": guided_edges_bytes
     }
+
    
