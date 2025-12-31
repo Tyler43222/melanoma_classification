@@ -31,7 +31,20 @@ def analyze_image(uploaded_file):
 
 @functools.lru_cache(maxsize=1)
 def load_model():
-    return tf.keras.models.load_model("model25.keras")
+    model = tf.keras.models.load_model("model25.keras")
+    # force-build model by running a dummy inference
+    dummy = tf.zeros((1, IMG_SIZE, IMG_SIZE, 3))
+    model(dummy, training=False)
+    return model
+
+
+@functools.lru_cache(maxsize=1)
+def load_guided_model():
+    m = load_model()
+    gm = _build_guided_model(m)
+    dummy = tf.zeros((1, IMG_SIZE, IMG_SIZE, 3))
+    gm(dummy, training=False)   # force-call
+    return gm
 
 
 @tf.custom_gradient
