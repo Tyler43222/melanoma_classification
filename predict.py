@@ -87,7 +87,7 @@ def guided_gradcam_png(image_bytes, target_class=None):
 
     # --- Grad-CAM ---
     target_layer = model.get_layer(target_conv_name)
-    grad_model = tf.keras.Model(inputs=model.input, outputs=[target_layer.output, model.output])
+    grad_model = tf.keras.Model(input=model.input, outputs=[target_layer.output, model.output])
 
     with tf.GradientTape() as tape:
         tape.watch(input_tensor)
