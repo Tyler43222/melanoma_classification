@@ -1,6 +1,5 @@
 import streamlit as st
 import io
-
 from predict import analyze_image, guided_gradcam_png
 
 st.title("Skin Scan")

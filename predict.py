@@ -42,11 +42,12 @@ def guided_relu(x):
     return tf.nn.relu(x), grad
 
 
-def _build_guided_model(model):
+def _build_guided_model(model, input_tensor):
     """Clone model but replace ReLU activations with guided ReLU."""
     # Clone the model
     cloned_model = tf.keras.models.clone_model(model)
-    cloned_model.build((None, IMG_SIZE, IMG_SIZE, 3))
+    # Call the model with actual input to build it properly
+    _ = cloned_model(input_tensor, training=False)
     cloned_model.set_weights(model.get_weights())
     
     # Replace ReLU activations with guided ReLU
@@ -103,7 +104,7 @@ def guided_gradcam_png(image_bytes, target_class=None):
     cam = cam / (cam.max() + 1e-8)
 
     # --- Guided Backpropagation ---
-    guided_model = _build_guided_model(model)
+    guided_model = _build_guided_model(model, input_tensor)
     with tf.GradientTape() as tape:
         tape.watch(input_tensor)
         guided_preds = guided_model(input_tensor, training=False)
