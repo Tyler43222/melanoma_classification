@@ -158,9 +158,10 @@ def guided_gradcam_png(image_bytes, target_class=None):
     if not ok:
         raise RuntimeError("Could not encode Guided Grad-CAM image")
     
-    # Convert to RGB + encode
-    guided_edges_rgb = cv2.cvtColor(guided_gradcam, cv2.COLOR_BGR2RGB)
-    ok2, buf_edges = cv2.imencode(".png", guided_edges_rgb)
+    # Overlay guided edges on the original image
+    # `guided_gradcam` is already in RGB (same channel order as `img_resized`).
+    guided_edges_overlay = cv2.addWeighted(img_resized, 0.4, guided_gradcam, 0.6, 0)
+    ok2, buf_edges = cv2.imencode(".png", guided_edges_overlay)
     if not ok2:
         raise RuntimeError("Could not encode guided edges image")
     guided_edges_bytes = buf_edges.tobytes()
