@@ -89,8 +89,18 @@ def guided_gradcam_png(image_bytes, target_class=None):
         raise ValueError("Could not decode uploaded image")
 
     decoded = cv2.cvtColor(decoded, cv2.COLOR_BGR2RGB)
-    img_resized = cv2.resize(decoded, (IMG_SIZE, IMG_SIZE))
-    img_float = img_resized.astype("float32") / 255.0
+
+    # Use a higher-res image for visualization so overlays don't look pixelated
+    display_img = decoded
+    max_dim = max(display_img.shape[0], display_img.shape[1])
+    if max_dim > 600:
+        scale = 600 / max_dim
+        new_w = int(display_img.shape[1] * scale)
+        new_h = int(display_img.shape[0] * scale)
+        display_img = cv2.resize(display_img, (new_w, new_h), interpolation=cv2.INTER_AREA)
+
+    model_img = cv2.resize(decoded, (IMG_SIZE, IMG_SIZE))
+    img_float = model_img.astype("float32") / 255.0
     input_tensor = tf.convert_to_tensor(img_float[None, ...])
 
     # Pick class
@@ -102,9 +112,8 @@ def guided_gradcam_png(image_bytes, target_class=None):
     idx_from_end = max(1, min(int(CONV_LAYER), len(conv_layers)))
     target_conv_name = conv_layers[-idx_from_end].name
 
-    # --- Grad-CAM ---
-    # Build a functional graph that guarantees the chosen conv activation feeds the final prediction.
-    # This avoids Keras 3 / Sequential edge-cases where `layer.output` / gradients can be disconnected.
+    # Grad-CAM
+    # Build a functional graph that guarantees the chosen conv activation feeds the final prediction
     inputs = tf.keras.Input(shape=(IMG_SIZE, IMG_SIZE, 3))
     x = inputs
     conv_out_tensor = None
@@ -127,7 +136,7 @@ def guided_gradcam_png(image_bytes, target_class=None):
     cam = tf.reduce_sum(conv_out * weights[:, None, None, :], axis=-1)
     cam = tf.nn.relu(cam)[0].numpy()
 
-    # Upsample Grad-CAM to input size
+    # Upsample Grad-CAM to model input size (for guided grad-cam multiplication)
     cam = cv2.resize(cam, (IMG_SIZE, IMG_SIZE), interpolation=cv2.INTER_CUBIC)
     cam = np.maximum(cam, 0)
     cam = cam / (cam.max() + 1e-8)
@@ -141,35 +150,30 @@ def guided_gradcam_png(image_bytes, target_class=None):
     guided_grads = tape.gradient(guided_score, input_tensor)[0].numpy()
 
     # --- Guided Grad-CAM visualization ---
-    # Create heatmap overlay instead of grayscale output (Issue 3)
-    heatmap = cv2.applyColorMap((cam * 255).astype(np.uint8), cv2.COLORMAP_JET)
-    heatmap = cv2.cvtColor(heatmap, cv2.COLOR_BGR2RGB)
-    
     # Guided edges for fine detail
     guided_gradcam = guided_grads * cam[..., np.newaxis]
     guided_gradcam = np.maximum(guided_gradcam, 0)
     guided_gradcam = guided_gradcam / (guided_gradcam.max() + 1e-8)
     guided_gradcam = (guided_gradcam * 255).astype(np.uint8)
-    
-    # Overlay heatmap on original image
-    overlay = cv2.addWeighted(img_resized, 0.6, heatmap, 0.4, 0)
 
-    ok, buf = cv2.imencode(".png", overlay)
-    if not ok:
-        raise RuntimeError("Could not encode Guided Grad-CAM image")
-    
+    # Upsample guided map to display resolution for overlay
+    guided_display = cv2.resize(
+        guided_gradcam,
+        (display_img.shape[1], display_img.shape[0]),
+        interpolation=cv2.INTER_CUBIC,
+    )
+
+    # Brighten both base image and guided visualization a bit
+    display_bright = cv2.convertScaleAbs(display_img, alpha=1.15, beta=15)
+    guided_bright = cv2.convertScaleAbs(guided_display, alpha=3.15, beta=75)
+
     # Overlay guided edges on the original image
     # `guided_gradcam` is already in RGB (same channel order as `img_resized`).
-    guided_edges_overlay = cv2.addWeighted(img_resized, 0.4, guided_gradcam, 0.6, 0)
+    guided_edges_overlay = cv2.addWeighted(display_bright, .5, guided_bright, .5, 0)
     ok2, buf_edges = cv2.imencode(".png", guided_edges_overlay)
     if not ok2:
         raise RuntimeError("Could not encode guided edges image")
     guided_edges_bytes = buf_edges.tobytes()
 
-    # ---- Return both ----
-    return {
-        "overlay_png": buf.tobytes(),
-        "guided_edges_png": guided_edges_bytes
-    }
+    return {"guided_edges_png": guided_edges_bytes}
 
-   
