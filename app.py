@@ -16,13 +16,11 @@ if st.button("Analyze"):
             result = analyze_image(io.BytesIO(image_bytes))
             st.write("")
             st.write("*These results are not a diagnosis*")
-            st.write("")
-            st.markdown(f"RESULTS: Benign: {result[0]}%, Malignant: {result[1]}%", unsafe_allow_html=True)
+            st.markdown(f"<h3>RESULTS: Benign: {result[0]}%, Malignant: {result[1]}%</h3>", unsafe_allow_html=True)
             st.write("")
 
             # Generate and display the Grad-CAM image
-            gradcam_results = guided_gradcam_png(image_bytes)
-            st.image(gradcam_results["guided_edges_png"], caption="Grad-CAM heatmap visualizing the regions most influential in the model’s prediction", use_container_width=True)
+            st.image(guided_gradcam_png(image_bytes), caption="Grad-CAM gradient visualizing the regions most influential in the model’s prediction", width='stretch')
 
         except Exception as exc:
             st.error(str(exc))

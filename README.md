@@ -1,9 +1,9 @@
 # Melanoma Classification: A Computer Vision Project
 Melanoma is the deadliest form of skin cancer partly because it is difficult to distinguish from harmless sunspots and thus goes unnoticed until late in its development. My goal is to use machine learning to distinguish benign spots from melanoma more reliably than the untrained eye. 
 
-In this project I built a convolutional neural network (CNN) to classify images of skinspots as benign or malignant with 92% accuracy on the testing set. I also built a simple Streamlit interface where users can upload images of their own skinspots to classify and see a Grad-CAM heatmap revealing the specific regions of the skinspot that lead to the model's prediction.  
+In this project I built a convolutional neural network (CNN) to classify images of skinspots as benign or malignant with 92% accuracy on the testing set. I also built a simple Streamlit interface where users can upload images of their own skinspots to classify and see a Grad-CAM overlay revealing the specific regions of the skinspot that lead to the model's prediction.  
 ### Dataset
-Kaggle dataset with 13,879 curated images of skinspots split into a training and testing set:
+Kaggle dataset with 13,879 unique images of skinspots split into a training and testing set:
 - Train:
     - Benign - 6289 images
     - Malignant - 5590 images
@@ -13,7 +13,7 @@ Kaggle dataset with 13,879 curated images of skinspots split into a training and
 
 ### Structure
  - ```train.py``` - trains a CNN on the dataset and saves model. 30 epochs maximum, stops early if performance plateaus. 
- - ```predict.py``` - contains functions to classify user-uploaded images and generate a Grad-CAM heatmap that visualizes the regions of the image most influential in the model's prediction. 
+ - ```predict.py``` - contains functions to classify user-uploaded images and generate a Grad-CAM gradient overlay that visualizes the regions of the image most influential in the model's prediction. 
  - ```app.py``` - calls functions from predict.py to display results on the Streamlit frontend
  - ```utils.py``` - function for generating accuracy/loss graph and confusion matrix
 

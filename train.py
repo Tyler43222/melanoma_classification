@@ -9,7 +9,6 @@ from utils import generate_graphs
 EPOCHS = 30
 IMG_SIZE = 100
 
-
 def main():
     # Check command-line arguments
     if len(sys.argv) not in [2, 3]:
